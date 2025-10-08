@@ -1,0 +1,724 @@
+COMMAND "Insert Page Type with Block Editor"
+  DESCRIPTION "Scaffold a new PageType (routes, components, queries) and wire it throughout Studio, frontend utils, sitemap, and link objects—idempotently."
+  LAST_UPDATED "29-09-2025-13-48-08"
+  DOMAIN "sanity-template-nextjs-clean"
+  TAGS "routing", "Insert page type"
+  CONCEPT "page-type"
+  VARIANT "with-block-editor"
+    VARIABLE 1 "PageTypeSingular"
+      TITLE "Name your page type"
+      DESCRIPTION "Sanity document _type name (singular). Drives naming across files."
+      EXAMPLES "author", "event", "product", "service"
+
+    VARIABLE 2 "PageTypePlural"
+      TITLE "Pluralize your page type"
+      DESCRIPTION "Plural of the page type for routes, lists, and UI copy."
+      EXAMPLES "authors", "events", "products", "services"
+
+
+
+
+CREATE FILE IF ABSENT "frontend/app/{{.KebabCasePageTypePlural}}/(index)/page.tsx"
+  CONTAINING
+  ::: content for "page.tsx" :::
+  import Link from "next/link";
+  import type { Metadata } from "next";
+  import { client } from "@/sanity/lib/client";
+  import { all{{.PascalCasePageTypePlural}}Query } from "@/sanity/lib/pagetype-queries/{{.KebabCasePageTypeSingular}}.queries";
+  import { All{{.PascalCasePageTypePlural}} } from "@/app/components/{{.PascalCasePageTypePlural}}";
+
+  export const metadata: Metadata = {
+    title: "{{.PascalCasePageTypePlural}}",
+    description: "All {{.LowerCasePageTypePlural}}"
+  };
+
+  export default async function {{.PascalCasePageTypeSingular}}IndexPage() {
+    const items = await client.fetch(all{{.PascalCasePageTypePlural}}Query);
+
+    if (!items?.length) {
+      return (
+        <main className="container mx-auto p-6">
+          <h1 className="text-2xl font-semibold">{{.PascalCasePageTypePlural}}</h1>
+          <p className="opacity-70 mt-2">No {{.LowerCasePageTypePlural}} yet.</p>
+        </main>
+      );
+    }
+
+    return (
+      <main className="container mx-auto p-6">
+        <All{{.PascalCasePageTypePlural}} />
+      </main>
+    );
+  }
+  ::: content for "page.tsx" :::
+
+
+
+
+CREATE FILE IF ABSENT "frontend/app/{{.KebabCasePageTypePlural}}/[slug]/page.tsx"
+  CONTAINING
+  ::: content for "page.tsx" :::
+  import type {Metadata, ResolvingMetadata} from 'next'
+  import {notFound} from 'next/navigation'
+  import {type PortableTextBlock} from 'next-sanity'
+  import {Suspense} from 'react'
+
+  import Avatar from '@/app/components/Avatar'
+  import CoverImage from '@/app/components/CoverImage'
+  import {MorePosts} from '@/app/components/Posts'
+  import PortableText from '@/app/components/PortableText'
+  import {sanityFetch} from '@/sanity/lib/live'
+  import { {{.LowerCasePageTypeSingular}}Slugs, {{.LowerCasePageTypeSingular}}BySlugQuery } from '@/sanity/lib/pagetype-queries/{{.KebabCasePageTypeSingular}}.queries'
+  import {resolveOpenGraphImage} from '@/sanity/lib/utils'
+
+  export type Props = { params: Promise<{slug: string}> }
+
+  export async function generateStaticParams() {
+    const {data} = await sanityFetch({
+      query: {{.LowerCasePageTypeSingular}}Slugs,
+      perspective: 'published',
+      stega: false,
+    })
+    return data
+  }
+
+  export async function generateMetadata(props: Props, parent: ResolvingMetadata): Promise<Metadata> {
+    const params = await props.params
+    const {data: doc} = await sanityFetch({
+      query: {{.LowerCasePageTypeSingular}}BySlugQuery,
+      params,
+      stega: false,
+    })
+
+    const previousImages = (await parent).openGraph?.images || []
+    const ogImage = resolveOpenGraphImage(doc?.coverImage)
+
+    return {
+      authors:
+        doc?.author?.firstName && doc?.author?.lastName
+          ? [{name: `${doc.author.firstName} ${doc.author.lastName}`}]
+          : [],
+      title: doc?.title,
+      description: doc?.excerpt,
+      openGraph: {
+        images: ogImage ? [ogImage, ...previousImages] : previousImages,
+      },
+    } satisfies Metadata
+  }
+
+  export default async function {{.PascalCasePageTypeSingular}}Page(props: Props) {
+    const params = await props.params
+    const [{data: doc}] = await Promise.all([
+      sanityFetch({ query: {{.LowerCasePageTypeSingular}}BySlugQuery, params })
+    ])
+
+    if (!doc?._id) {
+      return notFound()
+    }
+
+    return (
+      <>
+        <div className="">
+          <div className="container my-12 lg:my-24 grid gap-12">
+            <div>
+              <div className="pb-6 grid gap-6 mb-6 border-b border-gray-100">
+                <div className="max-w-3xl flex flex-col gap-6">
+                  <h2 className="text-4xl font-bold tracking-tight text-gray-900 sm:text-5xl lg:text-7xl">
+                    {doc.title}
+                  </h2>
+                </div>
+                <div className="max-w-3xl flex gap-4 items-center">
+                  {doc.author && doc.author.firstName && doc.author.lastName && (
+                    <Avatar person={doc.author} date={doc.date} />
+                  )}
+                </div>
+              </div>
+              <article className="gap-6 grid max-w-4xl">
+                <div className="">
+                  {doc?.coverImage && <CoverImage image={doc.coverImage} priority />}
+                </div>
+                {doc?.content?.length ? (
+                  <PortableText className="max-w-2xl" value={doc.content as PortableTextBlock[]} />
+                ) : null}
+              </article>
+            </div>
+          </div>
+        </div>
+        <div className="border-t border-gray-100 bg-gray-50">
+          <div className="container py-12 lg:py-24 grid gap-12">
+            <aside>
+              <Suspense>{await MorePosts({skip: doc._id, limit: 2})}</Suspense>
+            </aside>
+          </div>
+        </div>
+      </>
+    )
+  }
+  ::: content for "page.tsx" :::
+
+
+
+
+CREATE FILE IF ABSENT "frontend/app/components/{{.PascalCasePageTypePlural}}.tsx"
+  CONTAINING
+  ::: content for "{{.PascalCasePageTypePlural}}.tsx" :::
+  import Link from 'next/link'
+
+  import { sanityFetch } from '@/sanity/lib/live'
+  import { all{{.PascalCasePageTypePlural}}Query } from '@/sanity/lib/pagetype-queries/{{.KebabCasePageTypeSingular}}.queries'
+  import DateComponent from '@/app/components/Date'
+  import OnBoarding from '@/app/components/Onboarding'
+  import Avatar from '@/app/components/Avatar'
+  import { createDataAttribute } from 'next-sanity'
+
+  type {{.PascalCasePageTypeSingular}}ListItem = {
+    _id: string
+    title?: string
+    name?: string
+    slug: string
+    excerpt?: string | null
+    subheading?: string | null
+    coverImage?: unknown
+    date?: string
+    author?:
+      | {
+          firstName?: string
+          lastName?: string
+          picture?: unknown
+        }
+      | null
+  }
+
+  const {{.PascalCasePageTypeSingular}}Card = ({ item }: { item: {{.PascalCasePageTypeSingular}}ListItem }) => {
+    const { _id, slug, date, author } = item
+    const title = item.title ?? item.name ?? 'Untitled'
+    const excerpt = (item.excerpt ?? item.subheading) ?? null
+
+    const attr = createDataAttribute({
+      id: _id,
+      type: '{{.LowerCasePageTypeSingular}}',
+      path: (item.title ? 'title' : 'name') as 'title' | 'name',
+    })
+
+    return (
+      <article
+        data-sanity={attr()}
+        key={_id}
+        className="border border-gray-200 rounded-sm p-6 bg-gray-50 flex flex-col justify-between transition-colors hover:bg-white relative"
+      >
+        <Link className="hover:text-brand underline transition-colors" href={`/{{.LowerCasePageTypePlural}}/${slug}`}>
+          <span className="absolute inset-0 z-10" />
+        </Link>
+
+        <div>
+          <h3 className="text-2xl font-bold mb-4 leading-tight">{title}</h3>
+
+          {excerpt && (
+            <p className="line-clamp-3 text-sm leading-6 text-gray-600 max-w-[70ch]">{excerpt}</p>
+          )}
+        </div>
+
+        <div className="flex items-center justify-between mt-6 pt-4 border-t border-gray-100">
+          {author?.firstName && author?.lastName && (
+            <div className="flex items-center">
+              <Avatar person={author as any} small={true} />
+            </div>
+          )}
+          {date && (
+            <time className="text-gray-500 text-xs font-mono" dateTime={date}>
+              <DateComponent dateString={date} />
+            </time>
+          )}
+        </div>
+      </article>
+    )
+  }
+
+  const {{.PascalCasePageTypePlural}} = ({
+    children,
+    heading,
+    subHeading,
+  }: {
+    children: React.ReactNode
+    heading?: string
+    subHeading?: string
+  }) => (
+    <div>
+      {heading && (
+        <h2 className="text-3xl font-bold tracking-tight text-gray-900 sm:text-4xl lg:text-5xl">
+          {heading}
+        </h2>
+      )}
+      {subHeading && <p className="mt-2 text-lg leading-8 text-gray-600">{subHeading}</p>}
+
+      <div className="pt-6 space-y-6">{children}</div>
+    </div>
+  )
+
+  export const All{{.PascalCasePageTypePlural}} = async () => {
+    const { data } = await sanityFetch({ query: all{{.PascalCasePageTypePlural}}Query })
+
+    if (!data || data.length === 0) {
+      return <OnBoarding />
+    }
+
+    const list = data as unknown as {{.PascalCasePageTypeSingular}}ListItem[]
+
+    return (
+      <{{.PascalCasePageTypePlural}}
+        heading="{{.PascalCasePageTypePlural}}"
+        subHeading="{{.PascalCasePageTypePlural}} populated from your Sanity Studio."
+      >
+        {list.map((item) => (
+          <{{.PascalCasePageTypeSingular}}Card key={item._id} item={item} />
+        ))}
+      </{{.PascalCasePageTypePlural}}>
+    )
+  }
+  ::: content for "{{.PascalCasePageTypePlural}}.tsx" :::
+
+
+
+
+IN "frontend/app/components/Header.tsx"
+
+
+  INSERT "<Link href=\"/{{.LowerCasePageTypePlural}}\" className=\"mr-6 hover:underline\">{{.PascalCasePageTypePlural}}</Link>"
+      BELOW FIRST "<li>"
+        ASLONG FILE DONT CONTAIN "href=\"/{{.LowerCasePageTypePlural}}\""
+          BECAUSE WE WANT TO "Insert PageType archive link to Header nav"
+
+
+
+
+IN "frontend/app/sitemap.ts"
+
+
+  INSERT
+    ::: content to "sitemap.ts" :::
+    case '{{.LowerCasePageTypeSingular}}':
+      priority = 0.5
+      changeFrequency = 'weekly'
+      url = `${domain}/{{.LowerCasePageTypePlural}}/${p.slug}`
+      break
+    ::: content to "sitemap.ts" :::
+      ABOVE
+        ::: target inside "sitemap.ts" :::
+        sitemap.push({
+          lastModified: p._updatedAt || new Date(),
+          priority,
+          changeFrequency,
+          url,
+        })
+        ::: target inside "sitemap.ts" :::
+          ASLONG FILE DONT CONTAIN "`/{{.LowerCasePageTypePlural}}/${p.slug}`"
+            BECAUSE WE WANT TO "Insert PageType link reference to sitemap.ts for SEO purposes"
+
+
+
+
+CREATE FILE IF ABSENT "frontend/sanity/lib/pagetype-queries/{{.KebabCasePageTypeSingular}}.queries.ts"
+  CONTAINING
+  ::: content for "{{.KebabCasePageTypeSingular}}.queries.ts" :::
+  import { defineQuery } from "next-sanity";
+  import { linkReference, postFields } from "../queries";
+
+  export const all{{.PascalCasePageTypePlural}}Query = defineQuery(`
+    *[_type == "{{.LowerCasePageTypeSingular}}" && defined(slug.current)] | order(date desc, _updatedAt desc) {
+      ${postFields}
+    }
+  `);
+
+  export const {{.LowerCasePageTypeSingular}}BySlugQuery = defineQuery(`
+    *[_type == "{{.LowerCasePageTypeSingular}}" && slug.current == $slug] [0] {
+      content[]{
+        ...,
+        titleDefs[]{
+          ...,
+          ${linkReference}
+        }
+      },
+      ${postFields}
+    }
+  `);
+
+  export const {{.LowerCasePageTypeSingular}}Slugs = defineQuery(`
+    *[_type == "{{.LowerCasePageTypeSingular}}" && defined(slug.current)]
+    {"slug": slug.current}
+  `);
+  ::: content for "{{.KebabCasePageTypeSingular}}.queries.ts" :::
+
+
+
+
+IN "frontend/sanity/lib/queries.ts"
+
+
+  REPLACE "const linkFields = /* groq */"
+      WITH "export const linkFields = /* groq */"
+        ASLONG FILE DONT CONTAIN "export const linkFields ="
+          BECAUSE WE WANT TO "Set linkFields as an exportable fragment for reuse"
+
+
+  REPLACE "const postFields = /* groq */"
+      WITH "export const postFields = /* groq */"
+        ASLONG FILE DONT CONTAIN "export const postFields ="
+          BECAUSE WE WANT TO "Set postFields as an exportable fragment for reuse"
+
+
+  REPLACE "const linkReference = /* groq */"
+      WITH "export const linkReference = /* groq */"
+        ASLONG FILE DONT CONTAIN "export const linkReference ="
+          BECAUSE WE WANT TO "Set linkReference as an exportable fragment for reuse"
+
+
+  INSERT "\"{{.LowerCasePageTypeSingular}}\": {{.LowerCasePageTypeSingular}}->slug.current,"
+      BELOW "_type == \"link\""
+        ASLONG FILE DONT CONTAIN "\"{{.LowerCasePageTypeSingular}}\": {{.LowerCasePageTypeSingular}}->slug.current,"
+          BECAUSE WE WANT TO "Insert PageType link reference to linkFields"
+
+
+  INSERT "|| _type == \"{{.LowerCasePageTypeSingular}}\""
+      BEFORE INLINE "&& defined(slug.current)] | order(_type asc) {"
+        ASLONG FILE DONT CONTAIN "_type == \"{{.LowerCasePageTypeSingular}}\""
+
+
+  REPLACE
+    ::: target inside "queries.ts" :::
+    const getPageQuery = defineQuery(`
+      *[_type == 'page' && slug.current == $slug][0]{
+        _id,
+        _type,
+        name,
+        slug,
+        heading,
+        subheading,
+        "pageBuilder": pageBuilder[]{
+          ...,
+          _type == "callToAction" => {
+            ${linkFields},
+          },
+          _type == "infoSection" => {
+            content[]{
+              ...,
+              markDefs[]{
+                ...,
+                ${linkReference}
+              }
+            }
+          },
+        },
+      }
+    `)
+    ::: target inside "queries.ts" :::
+      WITH
+        ::: content to "queries.ts" :::
+        export const pageBuilderFields = /* groq */ `
+          ...,
+          _type == "callToAction" => {
+            ${linkFields},
+          },
+          _type == "infoSection" => {
+            content[]{
+              ...,
+              titleDefs[]{
+                ...,
+                ${linkReference}
+              }
+            }
+          }
+        `
+
+        export const getPageQuery = defineQuery(`
+          *[_type == 'page' && slug.current == $slug][0]{
+            _id,
+            _type,
+            name,
+            slug,
+            heading,
+            subheading,
+            "pageBuilder": pageBuilder[]{
+              ${pageBuilderFields}
+            },
+          }
+        `)
+        ::: content to "queries.ts" :::
+          ASLONG FILE CONTAIN START AND END OF TARGET
+            AND ASLONG FILE DONT CONTAIN "export const pageBuilderFields ="
+              BECAUSE WE WANT TO "Set pageBuilderFields as a fragment for reuse, and set getPageQuery as an exportable query"
+
+
+  REPLACE
+    ::: target inside "queries.ts" :::
+    const sitemapData = defineQuery(`
+    *[_type in ["page","post","{{.LowerCasePageTypeSingular}}"] && defined(slug.current)] | order(_type asc) {
+      "slug": slug.current,
+      _type,
+      _updatedAt,
+    }`)
+    ::: target inside "queries.ts" :::
+      WITH
+        ::: content to "queries.ts" :::
+        export const sitemapData = defineQuery(`
+          *[_type in ["page","post","{{.LowerCasePageTypeSingular}}"] && defined(slug.current)] | order(_type asc) {
+            "slug": slug.current,
+            _type,
+            _updatedAt,
+          }
+        `)
+        ::: content to "queries.ts" :::
+          ASLONG FILE CONTAIN START AND END OF TARGET
+            AND ASLONG FILE DONT CONTAIN "[\"page\",\"post\",\"{{.LowerCasePageTypeSingular}}\"]",
+              BECAUSE WE WANT TO "Insert PageType to sitemapData query for SEO purposes"
+
+
+
+
+IN "frontend/sanity/lib/utils.ts"
+
+
+  INSERT
+    ::: content to "utils.ts" :::
+
+    case '{{.LowerCasePageTypeSingular}}': {
+      const slug = (link as any)?.['{{.LowerCasePageTypeSingular}}']
+      return typeof slug === 'string' ? `/{{.LowerCasePageTypePlural}}/${slug}` : null
+    }
+    ::: content to "utils.ts" :::
+      ABOVE "default:"
+        ASLONG FILE DONT CONTAIN "`/{{.LowerCasePageTypePlural}}/${slug}`"
+          BECAUSE WE WANT TO "Insert PageType link resolver case to sanity/lib/utils.ts"
+
+
+
+
+CREATE FILE IF ABSENT "studio/src/schemaTypes/documents/{{.KebabCasePageTypeSingular}}.ts"
+  CONTAINING
+  ::: content for "{{.KebabCasePageTypeSingular}}.ts" :::
+  import {DocumentTextIcon} from '@sanity/icons'
+  import {format, parseISO} from 'date-fns'
+  import {defineField, defineType} from 'sanity'
+
+  export const {{.LowerCasePageTypeSingular}} = defineType({
+    name: '{{.LowerCasePageTypeSingular}}',
+    title: '{{.PascalCasePageTypeSingular}}',
+    icon: DocumentTextIcon,
+    type: 'document',
+    fields: [
+      defineField({
+        name: 'title',
+        title: 'Title',
+        type: 'string',
+        validation: (rule) => rule.required(),
+      }),
+      defineField({
+        name: 'slug',
+        title: 'Slug',
+        type: 'slug',
+        description: 'A slug is required for the page to show up in the preview',
+        options: {
+          source: 'title',
+          maxLength: 96,
+          isUnique: (value, context) => context.defaultIsUnique(value, context),
+        },
+        validation: (rule) => rule.required(),
+      }),
+      defineField({
+        name: 'content',
+        title: 'Content',
+        type: 'blockContent',
+      }),
+      defineField({
+        name: 'excerpt',
+        title: 'Excerpt',
+        type: 'text',
+      }),
+      defineField({
+        name: 'coverImage',
+        title: 'Cover Image',
+        type: 'image',
+        options: {
+          hotspot: true,
+          aiAssist: {
+            imageDescriptionField: 'alt',
+          },
+        },
+        fields: [
+          {
+            name: 'alt',
+            type: 'string',
+            title: 'Alternative text',
+            description: 'Important for SEO and accessibility.',
+            validation: (rule) => {
+              return rule.custom((alt, context) => {
+                if ((context.document?.coverImage as any)?.asset?._ref && !alt) {
+                  return 'Required'
+                }
+                return true
+              })
+            },
+          },
+        ],
+        validation: (rule) => rule.required(),
+      }),
+      defineField({
+        name: 'date',
+        title: 'Date',
+        type: 'datetime',
+        initialValue: () => new Date().toISOString(),
+      }),
+      defineField({
+        name: 'author',
+        title: 'Author',
+        type: 'reference',
+        to: [{type: 'person'}],
+      }),
+    ],
+    preview: {
+      select: {
+        title: 'title',
+        authorFirstName: 'author.firstName',
+        authorLastName: 'author.lastName',
+        date: 'date',
+        media: 'coverImage',
+      },
+      prepare({title, media, authorFirstName, authorLastName, date}) {
+        const subtitles = [
+          authorFirstName && authorLastName && `by ${authorFirstName} ${authorLastName}`,
+          date && `on ${format(parseISO(date), 'LLL d, yyyy')}`,
+        ].filter(Boolean)
+
+        return {title, media, subtitle: subtitles.join(' ')}
+      },
+    },
+  })
+  ::: content for "{{.KebabCasePageTypeSingular}}.ts" :::
+
+
+
+
+IN "studio/src/schemaTypes/objects/blockContent.tsx"
+
+
+  INSERT "{title: '{{.PascalCasePageTypeSingular}}', value: '{{.LowerCasePageTypeSingular}}'},"
+      ABOVE FIRST "],"
+        ASLONG FILE DONT CONTAIN "value: '{{.LowerCasePageTypeSingular}}'"
+          BECAUSE WE WANT TO "Insert PageType link option to Sanity Studio Block Content Object"
+
+
+  INSERT
+    ::: content to "blockContent.tsx" :::
+    defineField({
+      name: '{{.LowerCasePageTypeSingular}}',
+      title: '{{.PascalCasePageTypeSingular}}',
+      type: 'reference',
+      to: [{type: '{{.LowerCasePageTypeSingular}}'}],
+      hidden: ({parent}) => parent?.linkType !== '{{.LowerCasePageTypeSingular}}',
+      validation: (Rule) =>
+        Rule.custom((value, context: any) => {
+          if (context.parent?.linkType === '{{.LowerCasePageTypeSingular}}' && !value) {
+            return '{{.PascalCasePageTypeSingular}} reference is required when Link Type is {{.PascalCasePageTypeSingular}}'
+          }
+          return true
+        }),
+    }),
+    ::: content to "blockContent.tsx" :::
+      BELOW LAST "defineField({"
+        ASLONG FILE DONT CONTAIN "name: '{{.LowerCasePageTypeSingular}}'"
+          BECAUSE WE WANT TO "Insert PageType reference to blockContent object"
+
+
+
+
+IN "studio/src/schemaTypes/objects/link.ts"
+
+
+  INSERT "{title: '{{.PascalCasePageTypeSingular}}', value: '{{.LowerCasePageTypeSingular}}'},"
+      ABOVE FIRST "],"
+        ASLONG FILE DONT CONTAIN "value: '{{.LowerCasePageTypeSingular}}'"
+          BECAUSE WE WANT TO "Insert PageType link option to Sanity Studio Link Object"
+
+
+  INSERT
+    ::: content to "link.ts" :::
+    defineField({
+      name: '{{.LowerCasePageTypeSingular}}',
+      title: '{{.PascalCasePageTypeSingular}}',
+      type: 'reference',
+      to: [{type: '{{.LowerCasePageTypeSingular}}'}],
+      hidden: ({parent}) => parent?.linkType !== '{{.LowerCasePageTypeSingular}}',
+      validation: (Rule) =>
+        Rule.custom((value, context: any) => {
+          if (context.parent?.linkType === '{{.LowerCasePageTypeSingular}}' && !value) {
+            return '{{.PascalCasePageTypeSingular}} reference is required when Link Type is {{.PascalCasePageTypeSingular}}'
+          }
+          return true
+        }),
+    }),
+    ::: content to "link.ts" :::
+      BELOW LAST "defineField({"
+        ASLONG FILE DONT CONTAIN "name: '{{.LowerCasePageTypeSingular}}'"
+          BECAUSE WE WANT TO "Insert PageType reference to generic link object"
+
+
+
+
+IN "studio/src/schemaTypes/singletons/settings.tsx"
+
+
+  INSERT "{title: '{{.PascalCasePageTypeSingular}}', value: '{{.LowerCasePageTypeSingular}}'},"
+      BELOW FIRST "list: ["
+        ASLONG FILE DONT CONTAIN "value: '{{.LowerCasePageTypeSingular}}'"
+          BECAUSE WE WANT TO "Insert PageType link option to Sanity Studio Settings Panel"
+
+
+  INSERT
+    ::: content to "settings.tsx" :::
+    defineField({
+      name: '{{.LowerCasePageTypeSingular}}',
+      title: '{{.PascalCasePageTypeSingular}}',
+      type: 'reference',
+      to: [{type: '{{.LowerCasePageTypeSingular}}'}],
+      hidden: ({parent}) => parent?.linkType !== '{{.LowerCasePageTypeSingular}}',
+      validation: (Rule) =>
+        Rule.custom((value, context: any) => {
+          if (context.parent?.linkType === '{{.LowerCasePageTypeSingular}}' && !value) {
+            return '{{.PascalCasePageTypeSingular}} reference is required when Link Type is {{.PascalCasePageTypeSingular}}'
+          }
+          return true
+        }),
+    }),
+    ::: content to "settings.tsx" :::
+      ABOVE "name: 'openInNewTab',"
+        ASLONG FILE DONT CONTAIN "name: '{{.LowerCasePageTypeSingular}}'"
+          BECAUSE WE WANT TO "Insert Reference Field in Sanity Studio Settings Panel for New PageType"
+
+
+
+
+IN "studio/src/schemaTypes/index.ts"
+
+
+  INSERT "import { {{.LowerCasePageTypeSingular}} } from './documents/{{.KebabCasePageTypeSingular}}'"
+      BELOW "import {post} from './documents/post'"
+        ASLONG FILE DONT CONTAIN "from './documents/{{.KebabCasePageTypeSingular}}'"
+          BECAUSE WE WANT TO "Import the PageType Schema into schemaTypes/index.ts"
+
+
+  INSERT "{{.LowerCasePageTypeSingular}},"
+      ABOVE "// Objects"
+        ASLONG FILE DONT CONTAIN "{{.LowerCasePageTypeSingular}},"
+          BECAUSE WE WANT TO "Insert the PageType Schema into schemaTypes/index.ts"
+
+
+
+
+IN "frontend/app/components/PortableText.tsx"
+
+
+  INSERT "import {PortableText, type PortableTextComponents, type PortableTextBlock} from 'next-sanity'"
+      ABOVE FIRST "export default"
+        ASLONG FILE DONT CONTAIN "from 'next-sanity'"
+          BECAUSE WE WANT TO "Ensure PortableText component import (safe no-op)"
+
+
